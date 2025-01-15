@@ -5,13 +5,20 @@ import {
   Args,
   Subscription,
   Int,
+  Context,
 } from '@nestjs/graphql';
 import { DocumentsService } from './documents.service';
 import { Document } from './entities/document.entity';
-import { PubSubService } from 'src/pubsub/pubSub.service';
-import { UsersService } from 'src/users/users.service';
+import { PubSubService } from './../pubsub/pubsub.service';
+import { UsersService } from './../users/users.service';
+import { UseGuards } from '@nestjs/common';
+import { GqlBasicAuthGuard } from './../auth/basic-auth.guard';
 
 const triggerName = 'documentUpdates';
+
+interface DocumentContext {
+  req: { user: { id: number } };
+}
 
 @Resolver(() => Document)
 export class DocumentsResolver {
@@ -30,24 +37,31 @@ export class DocumentsResolver {
   async updateDocument(
     @Args('documentId', { type: () => Int }) documentId: number,
   ) {
-    await this.pubSubService.publish(triggerName, {
-      [triggerName]: {
-        documentId,
-      },
-    });
+    await this.pubSubService.publish(triggerName, { documentId });
     return this.documentsService.update(documentId);
   }
 
   @Subscription(() => Document, {
-    async filter(this: DocumentsResolver, payload, variables) {
+    async filter(
+      this: DocumentsResolver,
+      payload,
+      variables,
+      context: DocumentContext,
+    ) {
       return (
-        this.usersService.hasDocumentUpdates(1, variables.documentId) &&
-        payload[triggerName].documentId === variables.documentId
+        this.usersService.hasDocumentUpdates(
+          context.req.user.id,
+          variables.documentId,
+        ) && payload[triggerName].documentId === variables.documentId
       );
     },
   })
-  documentUpdates(@Args('documentId', { type: () => Int }) documentId: number) {
-    this.usersService.setDocumentUpdates(1, documentId);
+  @UseGuards(GqlBasicAuthGuard)
+  documentUpdates(
+    @Args('documentId', { type: () => Int }) documentId: number,
+    @Context() context: DocumentContext,
+  ) {
+    this.usersService.setDocumentUpdates(context.req.user.id, documentId);
     return this.pubSubService.asyncIterableIterator(triggerName);
   }
 }

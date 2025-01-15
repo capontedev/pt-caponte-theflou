@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PubSub } from 'graphql-subscriptions';
-import { PubSubService } from './pubSub.service';
+import { PubSubService } from './pubsub.service';
 
 @Module({
   providers: [
